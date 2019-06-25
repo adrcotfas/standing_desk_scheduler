@@ -5,8 +5,9 @@
  * can be configured bellow.
  * 
  * Hardware:
- * - Arduino Uno
- * - L298N motor driver
+ * - Arduino Uno clone
+ * - HC-SR04 Ultrasonic Sensor
+ * - Dual Relay module
  * - Standing desk with a DC motor powered with a 30V/2A adapter
  * - plugs and wires
  * 
@@ -14,55 +15,75 @@
  * and whenever the user restarts the Arduino, the desk state will toggle.
  */
 
-#include <EEPROM.h>
+#include "NewPing.h"
 
-static const unsigned long timeSitting  = 60 /*[minutes]*/ * 60000; // [ms]
-static const unsigned long timeStanding = 20 /*[minutes]*/ * 60000; // [ms]
-static const unsigned long timeToToggle = 5000; // [ms] 
+#define BUTTON 12
+#define LED 13
+#define CW 7
+#define CCW 8
 
-static const int deskIsUpAdress = 0;
+#define TRIGGER_PIN 3
+#define ECHO_PIN 4
+#define MAX_DISTANCE 200
 
-static const int enA = 10;
-static const int in1 = 9;
-static const int in2 = 8;
+static const float GET_UP_DISTANCE = 50; // [cm]
+static const float GET_DOWN_DISTANCE = 7; // [cm]
+bool toggle = true;
+bool internalToggle = true;
 
-bool deskIsUp;
-static unsigned long lastToggleTime = 0;
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 
 void setup() {
+  pinMode(BUTTON, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
+  pinMode(CW, OUTPUT);
+  pinMode(CCW, OUTPUT);
 
-  //TODO: delete this after debugging
   Serial.begin(9600);
   
-  pinMode(enA, OUTPUT);
-  pinMode(in1, OUTPUT);
-  pinMode(in2, OUTPUT);
-  EEPROM.get(deskIsUpAdress, deskIsUp);
-
-  //TODO: delete this after debugging
-  Serial.print("deskIsUp: ", deskisUp);
 }
 
 void loop() {
-  if ((lastToggleTime == 0) ||
-      (deskIsUp && ((millis() - lastToggleTime) > timeStanding)) ||
-      (!deskIsUp && ((millis() - lastToggleTime) > timeSitting))) {
-    deskIsUp = !deskIsUp;
-    EEPROM.put(deskIsUpAdress, deskIsUp);
-    toggleDesk();
-    lastToggleTime = millis();
-  }
+   int buttonValue = digitalRead(BUTTON);
+   
+   if (buttonValue == LOW){
+      if (toggle) {
+        // GET UP
+        while (getDistance() < GET_UP_DISTANCE) {
+          
+          //Serial.print("Distance = ");
+          //Serial.println(getDistance());
+      
+          digitalWrite(LED,HIGH);
+          digitalWrite(CCW, HIGH);
+        }
+      } else {
+        // GET DOWN
+        while (getDistance() > GET_DOWN_DISTANCE) {
+          
+          //Serial.print("Distance = ");
+          //Serial.println(getDistance());
+      
+          digitalWrite(CW,HIGH);
+        }
+      }
+      internalToggle = true;
+      
+   } else if (internalToggle) {
+        toggle = !toggle;
+        internalToggle = false;
+        digitalWrite(LED, LOW);
+     
+        digitalWrite(CW, LOW);
+        digitalWrite(CCW, LOW);
+    } else {
+      // do nothing
+    }
 }
 
-void toggleDesk() {
-  //TODO: delete this after debugging
-  Serial.print("toggleDesk");
-  
-  digitalWrite(in1, deskIsUp ? HIGH : LOW);
-  digitalWrite(in2, deskIsUp ? LOW : HIGH);
-  analogWrite(enA, 200);
-  delay(timeToToggle);
-  digitalWrite(in1, LOW);
-  digitalWrite(in2, LOW);
-  analogWrite(enA, 0);
-}
+float getDistance() {
+    // Send ping, get distance in cm
+    const float distance = sonar.ping_cm();
+    const float duration = sonar.ping_median(5);
+    return (duration / 2) * 0.0343;
+} 
